@@ -1,0 +1,9 @@
+[
+  {
+    "type": "string",
+    "title": "ユーザー名",
+    "desc": "ユーザー名",
+    "section": "general",
+    "key": "username"
+  }
+]

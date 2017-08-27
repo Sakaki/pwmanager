@@ -1,0 +1,157 @@
+# -*- coding:Shift_JIS -*-
+
+#:import label kivy.uix.label
+#:import sla kivy.adapters.simplelistadapter
+#:import listview kivy.uix.listview
+
+<MainWindow>:
+    BoxLayout:
+        padding: 5
+
+        BoxLayout:
+            orientation: "vertical"
+            padding: 5
+
+            ListView:
+                size_hint_y: 5
+                id: listview_mylist_items
+
+            Button:
+                size_hint_y: 1
+                text: "追加"
+                on_release: root.show_password_dialog()
+
+        BoxLayout:
+            orientation: "vertical"
+            padding: 5
+
+            Label:
+                size_hint_y: 1
+                text: "タイトル"
+
+            TextInput:
+                size_hint_y: 1
+                id: password_title
+                text: root.password_title
+                multiline: False
+                write_tab: False
+
+            Label:
+                size_hint_y: 1
+                text: "内容"
+
+            TextInput:
+                size_hint_y: 3
+                id: password_body
+                text: root.password_body
+                write_tab: False
+
+            BoxLayout:
+                padding: 5
+
+                Button:
+                    text: "変更"
+                    on_release: root.show_login_dialog(root.change_password, {"title": password_title.text, "body": password_body.text})
+
+                Button:
+                    text: "削除"
+                    on_release: root.show_login_dialog(root.delete_password)
+
+<LoginDialog>:
+    BoxLayout:
+        size: root.size
+        pos: root.pos
+        orientation: "vertical"
+        padding: 5
+
+        BoxLayout:
+            size_hint_y: 3
+            orientation: 'vertical'
+            BoxLayout:
+                padding: 10
+                Label:
+                    size_hint_x: 1
+                    text: "ユーザー名"
+                TextInput:
+                    size_hint_x: 2
+                    id: input_username
+                    text: root.input_username
+                    multiline: False
+                    write_tab: False
+
+            BoxLayout:
+                padding: 10
+                Label:
+                    size_hint_x: 1
+                    text: "OTP"
+                TextInput:
+                    size_hint_x: 2
+                    id: input_password
+                    text: ""
+                    multiline: False
+                    write_tab: False
+
+            BoxLayout:
+                padding: 10
+                Label:
+                    size_hint_x: 1
+                    text: "暗号化パスワード"
+                TextInput:
+                    size_hint_x: 2
+                    id: input_encrypt
+                    text: root.input_encrypt
+                    multiline: False
+                    password: True
+                    write_tab: False
+
+        Label:
+            size_hint_y: 1
+            text: root.label_login_status
+
+        Button:
+            size_hint_y: 1
+            text: "ログイン"
+            on_release: root.start_login(input_username.text, input_password.text, input_encrypt.text, root.exec_method, root.method_params)
+
+<LoginProgressDialog>
+    BoxLayout:
+        size: root.size
+        pos: root.pos
+        orientation: "vertical"
+
+        Label:
+            text: "ログインしています・・・"
+
+<AddPasswordDialog>
+    BoxLayout:
+        size: root.size
+        pos: root.pos
+        orientation: "vertical"
+
+        BoxLayout:
+            orientation: "vertical"
+            padding: 5
+
+            Label:
+                size_hint_y: 1
+                text: "タイトル"
+
+            TextInput:
+                size_hint_y: 1
+                id: password_title
+                multiline: False
+                write_tab: False
+
+            Label:
+                size_hint_y: 1
+                text: "内容"
+
+            TextInput:
+                size_hint_y: 3
+                id: password_body
+                write_tab: False
+
+            Button:
+                text: "追加"
+                size_hint_y: 1
+                on_release: root.show_login_dialog(root.exec_method, {"title": root.encrypt(password_title.text), "body": root.encrypt(password_body.text)})
