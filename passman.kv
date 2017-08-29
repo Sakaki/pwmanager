@@ -51,11 +51,11 @@
 
                 Button:
                     text: "変更"
-                    on_release: root.show_login_dialog(root.change_password, {"title": password_title.text, "body": password_body.text})
+                    on_release: root.start_change_password(password_title.text, password_body.text)
 
                 Button:
                     text: "削除"
-                    on_release: root.show_login_dialog(root.delete_password)
+                    on_release: root.start_delete_password()
 
 <LoginDialog>:
     BoxLayout:
@@ -113,14 +113,14 @@
             text: "ログイン"
             on_release: root.start_login(input_username.text, input_password.text, input_encrypt.text, root.exec_method, root.method_params)
 
-<LoginProgressDialog>
+<ProgressDialog>
     BoxLayout:
         size: root.size
         pos: root.pos
         orientation: "vertical"
 
         Label:
-            text: "ログインしています・・・"
+            text: "お待ちください・・・"
 
 <AddPasswordDialog>
     BoxLayout:
@@ -154,4 +154,4 @@
             Button:
                 text: "追加"
                 size_hint_y: 1
-                on_release: root.show_login_dialog(root.exec_method, {"title": root.encrypt(password_title.text), "body": root.encrypt(password_body.text)})
+                on_release: root.exec_add_password(password_title.text, password_body.text)

@@ -6,15 +6,15 @@ from kivy.core.text import LabelBase, DEFAULT_FONT
 from kivy.config import Config
 from kivy.uix.popup import Popup
 from kivy.uix.floatlayout import FloatLayout
-from kivy.properties import StringProperty, NumericProperty, DictProperty
+from kivy.properties import StringProperty, DictProperty
 from kivy.properties import ObjectProperty
-from kivy.factory import Factory
 from kivy.adapters.listadapter import ListAdapter
-from kivy.uix.listview import ListItemButton, ListView
+from kivy.uix.listview import ListItemButton
 from os import path, sep
 import requests
 from Crypto.Cipher import AES
 import base64
+from threading import Thread
 
 # フォント設定
 font_dir = "{0}{1}font".format(path.dirname(path.abspath(__file__)), sep)
@@ -22,6 +22,7 @@ resource_add_path(font_dir)
 LabelBase.register(DEFAULT_FONT, 'ipag.ttf')
 
 base_url = "https://pwmanager.azurewebsites.net/{0}"
+# base_url = "http://localhost:4000/{0}"
 end_of_password = "%=pw=%"
 
 
@@ -41,14 +42,18 @@ class LoginDialog(FloatLayout):
         self.input_encrypt = encrypt
 
 
-class LoginProgressDialog(FloatLayout):
+class ProgressDialog(FloatLayout):
     pass
 
 
 class AddPasswordDialog(FloatLayout):
-    show_login_dialog = ObjectProperty(None)
-    exec_method = ObjectProperty(None)
+    start_add_password = ObjectProperty(None)
     encrypt = ObjectProperty(None)
+
+    def exec_add_password(self, title, body):
+        title = self.encrypt(title)
+        body = self.encrypt(body)
+        self.start_add_password(title, body)
 
 
 class DataItem(object):
@@ -65,44 +70,46 @@ class MainWindow(FloatLayout):
         super().__init__(**kwargs)
         self.popup = None
         self.username = ""
-        self.otp_token = ""
         self.passwords = []
         self.selected_password = None
         self.password_title = ""
         self.password_body = ""
         self.encrypt_password = ""
         self.config = None
+        self.headers = {"Authorization": ""}
 
     def show_login_dialog(self, exec_method, method_params={}):
-        if self.popup is not None:
-            self.popup.dismiss()
-        url = base_url.format("user/status")
-        response = requests.get(url, json={"username": self.username, "otp_token": self.otp_token})
-        if response.status_code != 200:
-            print(self.username)
-            login_dialog = LoginDialog("ログインしてください", self.username, self.encrypt_password,
-                                       start_login=self.start_login, exec_method=exec_method,
-                                       method_params=method_params)
-            self.popup = Popup(title="ログイン", content=login_dialog, size_hint=(0.8, 0.9))
-            self.popup.open()
-        else:
+        login_dialog = LoginDialog("ログインしてください", self.username, self.encrypt_password,
+                                   start_login=self.start_login, exec_method=exec_method,
+                                   method_params=method_params)
+        self.popup = Popup(title="ログイン", content=login_dialog, size_hint=(0.8, 0.9))
+        self.popup.open()
+
+    def login(self, username, otp_token, exec_method, method_params=None):
+        url = base_url.format("api-token-auth")
+        response = requests.post(url, json={"username": username, "otp_token": otp_token})
+        self.popup.dismiss()
+        if response.status_code == 200:
+            self.headers["Authorization"] = "Token {0}".format(response.json()["token"])
             exec_method(**method_params)
+        else:
+            self.show_login_dialog(exec_method, method_params)
 
     def start_login(self, user_id, otp_token, encrypt, exec_method, method_params=None):
         if method_params is None:
             method_params = {}
-        if self.username != user_id:
-            self.username = user_id
-            self.config.set("general", "username", user_id)
-        self.otp_token = otp_token
+        self.username = user_id
+        self.config.set("general", "username", user_id)
         if len(encrypt) > 32:
             self.encrypt_password = encrypt[:32]
         else:
             self.encrypt_password = encrypt + "_" * (32 - len(encrypt))
         self.popup.dismiss()
-        login_progress_dialog = LoginProgressDialog()
+        login_progress_dialog = ProgressDialog()
         self.popup = Popup(title="ログイン中", content=login_progress_dialog, size_hint=(0.3, 0.3))
-        exec_method(**method_params)
+        self.popup.open()
+        thread = Thread(target=self.login, args=(user_id, otp_token, exec_method, method_params, ))
+        thread.start()
 
     def encrypt(self, text):
         crypto = AES.new(self.encrypt_password)
@@ -140,34 +147,45 @@ class MainWindow(FloatLayout):
         list_adapter.bind(on_selection_change=self.set_password_detail)
         self.ids.listview_mylist_items.adapter = list_adapter
 
+    def start_get_passwords(self):
+        progress_dialog = ProgressDialog()
+        self.popup = Popup(title="取得中", content=progress_dialog, size_hint=(0.3, 0.3))
+        self.popup.open()
+        Thread(target=self.get_passwords).start()
+
     def get_passwords(self):
         url = base_url.format("password")
-        response = requests.get(url, json={"username": self.username, "otp_token": self.otp_token})
+        response = requests.get(url, headers=self.headers)
         if response.status_code == 200:
             self.set_passwords(response.json())
         self.popup.dismiss()
-        if response.status_code != 200:
-            self.show_login_dialog(self.get_passwords)
+        if 400 <= response.status_code < 500:
+            self.show_login_dialog(self.start_get_passwords)
 
     def show_password_dialog(self):
-        add_password_dialog = AddPasswordDialog(show_login_dialog=self.show_login_dialog,
-                                                encrypt=self.encrypt,
-                                                exec_method=self.add_password)
+        add_password_dialog = AddPasswordDialog(start_add_password=self.start_add_password, encrypt=self.encrypt)
         self.popup = Popup(title="パスワードを追加", content=add_password_dialog, size_hint=(0.8, 0.9))
         self.popup.open()
+
+    def start_add_password(self, title, body):
+        self.popup.dismiss()
+        progress_dialog = ProgressDialog()
+        self.popup = Popup(title="追加しています", content=progress_dialog, size_hint=(0.3, 0.3))
+        self.popup.open()
+        Thread(target=self.add_password, args=(title, body, )).start()
 
     def add_password(self, title, body):
         url = base_url.format("password")
         params = {
-            "username": self.username,
-            "otp_token": self.otp_token,
             "title": title,
             "body": body
         }
-        response = requests.post(url, json=params)
+        response = requests.post(url, json=params, headers=self.headers)
         self.popup.dismiss()
-        if response.status_code == 201:
-            self.show_login_dialog(self.get_passwords)
+        if 400 <= response.status_code < 500:
+            self.show_login_dialog(self.start_add_password, {"title": title, "body": body})
+        else:
+            self.start_get_passwords()
 
     def set_password_detail(self, list_adapter, *_):
         if len(list_adapter.selection) == 0:
@@ -177,35 +195,46 @@ class MainWindow(FloatLayout):
         self.password_title = self.selected_password["title"]
         self.password_body = self.selected_password["body"]
 
+    def start_change_password(self, title, body):
+        progress_dialog = ProgressDialog()
+        self.popup = Popup(title="変更しています", content=progress_dialog, size_hint=(0.3, 0.3))
+        self.popup.open()
+        Thread(target=self.change_password, args=(title, body, )).start()
+
     def change_password(self, title, body):
         url = base_url.format("password/{0}".format(self.selected_password["id"]))
         params = {
-            "username": self.username,
-            "otp_token": self.otp_token,
             "title": self.encrypt(title),
             "body": self.encrypt(body)
         }
-        response = requests.put(url, json=params)
+        response = requests.put(url, json=params, headers=self.headers)
         self.popup.dismiss()
-        print(response.json())
-        self.show_login_dialog(self.get_passwords)
+        if 400 <= response.status_code < 500:
+            self.show_login_dialog(self.change_password, {"title": title, "body": body})
+        else:
+            self.start_get_passwords()
+
+    def start_delete_password(self):
+        progress_dialog = ProgressDialog()
+        self.popup = Popup(title="削除しています", content=progress_dialog, size_hint=(0.3, 0.3))
+        self.popup.open()
+        Thread(target=self.delete_password).start()
 
     # TODO add change deleteのメソッドをまとめる
     def delete_password(self):
         url = base_url.format("password/{0}".format(self.selected_password["id"]))
-        params = {
-            "username": self.username,
-            "otp_token": self.otp_token,
-        }
-        response = requests.delete(url, json=params)
+        response = requests.delete(url, headers=self.headers)
         self.popup.dismiss()
-        self.show_login_dialog(self.get_passwords)
+        if 400 <= response.status_code < 500:
+            self.show_login_dialog(self.delete_password)
+        else:
+            self.start_get_passwords()
 
 
 class PassmanApp(App):
     def on_start(self):
         self.root.config = self.config
-        self.root.show_login_dialog(self.root.get_passwords)
+        self.root.show_login_dialog(self.root.start_get_passwords)
 
     def build(self):
         window = MainWindow()
@@ -227,5 +256,4 @@ class PassmanApp(App):
 if __name__ == "__main__":
     Config.set('graphics', 'width', '700')
     Config.set('graphics', 'height', '350')
-    # Factory.register('MainWindow', cls=MainWindow)
     PassmanApp().run()
